@@ -1,51 +1,66 @@
-from flask import Flask, request, send_file, jsonify
+import streamlit as st
 from gtts import gTTS
+import requests
+from io import BytesIO
 import speech_recognition as sr
-from flask_cors import CORS
-from pydub import AudioSegment
 
-app = Flask(__name__)
-CORS(app)
-
-@app.route('/tts', methods=['POST'])
-def text_to_speech():
-    data = request.json
-    text = data.get('text', '')
-    language = data.get('language', 'en')
-
+# Fungsi untuk mengonversi teks ke suara (TTS)
+def text_to_speech(text, language='en'):
     tts = gTTS(text=text, lang=language)
-    tts.save("output.mp3")
+    audio_buffer = BytesIO()
+    tts.write_to_fp(audio_buffer)
+    return audio_buffer.getvalue()
 
-    return send_file("output.mp3", as_attachment=True)
+# Streamlit App
+st.title('Speech Processing with Streamlit')
 
-@app.route('/stt', methods=['POST'])
-def speech_to_text():
-    try:
-        audio_file = request.files['audio']
+# Text-to-Speech (TTS)
+st.header('Text-to-Speech (TTS)')
+tts_text = st.text_area('Enter text for Text-to-Speech:', 'Hello, how are you?')
+tts_language = st.selectbox('Select language:', ['en', 'es', 'fr', 'id'])
+if st.button('Convert to Speech'):
+    tts_audio = text_to_speech(tts_text, language=tts_language)
+    st.audio(tts_audio, format='audio/wav', start_time=0)
 
-        # Save the audio file to disk
-        audio_file.save("temp_audio.wav")
+# Speech-to-Text (STT)
+st.header('Speech-to-Text (STT)')
+st.info('Click the button to start real-time speech-to-text from your microphone.')
 
-        # Load the audio file
-        audio = AudioSegment.from_file("temp_audio.wav")
+# Create a SpeechRecognition recognizer
+recognizer = sr.Recognizer()
 
-        recognizer = sr.Recognizer()
+# Placeholder for the recognized text
+text_result = ""
 
-        with sr.AudioFile("temp_audio.wav") as source:
-            audio_data = recognizer.record(source)
+# Function to start the speech recognition
+def start_listening():
+    global text_result
 
-        text = recognizer.recognize_google(audio_data)
-        response = jsonify({'text': text})
-        return response
+    # Use the browser's microphone
+    with sr.Microphone() as source:
+        st.info("Listening...")
 
-    except sr.UnknownValueError:
-        return jsonify({'error': 'Speech Recognition could not understand audio'}), 400
-    except sr.RequestError as e:
-        return jsonify({'error': f"Could not request results from Google Speech Recognition service: {e}"}), 503
-    except Exception as e:
-        print("Error:", str(e))
-        return jsonify({'error': 'Internal Server Error'}), 500
+        try:
+            # Adjust for ambient noise and recognize the speech
+            recognizer.adjust_for_ambient_noise(source)
+            audio_data = recognizer.listen(source, timeout=10)
 
-if __name__ == '__main__':
-    app.run(debug=True, port=8000, threaded=True, host='0.0.0.0')
+            # Perform speech-to-text
+            text_result = recognizer.recognize_google(audio_data)
 
+            st.success("Speech recognition completed!")
+
+        except sr.UnknownValueError:
+            st.warning("Speech Recognition could not understand audio.")
+        except sr.RequestError as e:
+            st.error(f"Could not request results from Google Speech Recognition service: {e}")
+        except Exception as e:
+            st.error(f"Error: {str(e)}")
+
+# Button to start listening and convert to text
+if st.button('Start Listening'):
+    start_listening()
+
+# Display the recognized text
+st.subheader('Speech-to-Text Result:')
+st.write(text_result)

@@ -1,5 +1,5 @@
-flask
 gTTS
 SpeechRecognition
-flask_cors
 pydub
+sounddevice
+io
